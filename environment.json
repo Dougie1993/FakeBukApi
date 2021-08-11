@@ -1,0 +1,12 @@
+{
+    "database" : {
+        "connection_url": "mongodb://localhost:27017/FakeBuk"
+    },
+    "database_online" : {
+        "connection_url":  "online string connection"
+
+    },
+    "secret": {
+        "secret_key" : "69056963127339001003asjkdhasdabdh3324426944"
+    }
+}
