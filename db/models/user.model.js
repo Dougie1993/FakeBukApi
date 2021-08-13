@@ -55,7 +55,7 @@ UserSchema.methods.toJSON = function () {
     const userObject = user.toObject();
 
     // return document except the password and sessions //
-    return _.omit(userObject, ['password'])
+    return _.omit(userObject, ['password','sessions'])
 }
 
 // Generate Refresh Token
@@ -138,13 +138,36 @@ UserSchema.statics.hasRefreshTokenExpired = (expiresAt) => {
 
 UserSchema.statics.findByIdAndToken = function (_id, token) {
     // This one is used in auth middleware when now dealing with headers
-
     const User = this;
+    if (_id.match(/^[0-9a-fA-F]{24}$/)) {
+        // Yes, it's a valid ObjectId, proceed with `findById` call.
+        return User.findOne({
+            _id,
+            'sessions.token': token
+        }).then((user) => {
+            if(user) {
+                return Promise.resolve(user);
+            } else {
+                return Promise.reject(new Error('User not Found'));
+            }
+        }).catch((e) => {
+            return Promise.reject(new Error('User not Found2')).then(function() {
+                // not called
+              }, function(error) {
+               // console.error(error); // Stacktrace
+              });
+        });
+    } else {
+        return Promise.reject(new Error('id format invalid')).then(function() {
+            // not called
+          }, function(error) {
+           // console.error(error); // Stacktrace
+          });
+    }   
+}
 
-    return User.findOne({
-        _id,
-        'sessions.token': token
-    });
+UserSchema.statics.getJWTSecret = () => {
+    return jwtSecret.secret.secret_key;
 }
 
 /* MIDDLEWARE */
@@ -186,7 +209,7 @@ let saveSessionToDatabase = (user, refreshToken) => {
 }
 
 let generateRefreshTokenExpiryTime = () => {
-    let daysUntilExpire = "1";
+    let daysUntilExpire = "5";
     let secondsUntilExpire = ((daysUntilExpire * 24) * 60) * 60;
     return ((Date.now() / 1000) + secondsUntilExpire);
 }

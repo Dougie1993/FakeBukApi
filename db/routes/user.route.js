@@ -1,7 +1,9 @@
 const express = require('express');
 const User = require('../models/user.model')
 const cors = require('cors');
-const router = express.Router()
+const { request } = require('express');
+const router = express.Router();
+const jwt = require('jsonwebtoken')
 
 
 router.use(function(req, res, next) {
@@ -19,6 +21,78 @@ router.use(function(req, res, next) {
 
 
 // router.use(cors());
+
+// Middleware
+
+let verifySession = (req, res, next) => {
+    // Grab refresh token from header //
+    let refreshToken = req.header('x-refresh-token');
+
+    //grab id from the request header
+    let _id = req.header('_id');
+
+    try{
+        User.findByIdAndToken(_id, refreshToken).then((user) => {
+            if(!user) {
+                //user not found
+                return Promise.reject(
+                    res.status(401).send('User not found')
+                );
+            }
+            // user found & session valid
+            req._id = user.id;
+            req.refreshToken = refreshToken;
+            req.userObject = user;
+    
+            //check if session has expired
+            let isSessionValid = false;
+            user.sessions.forEach((sessions) => {
+                if (sessions.token === refreshToken) {
+                    //check if session has expired
+                    if(User.hasRefreshTokenExpired(sessions.expiresAt) === false) {
+                        //refresh token has ot expired
+                        isSessionValid = true;
+                    }
+                }
+            });
+            if (isSessionValid) {
+                //session is valid call next to continue processing webrequest
+                next();
+            } else {
+                //session not valid
+                return Promise.reject({
+                    'error': 'Refresh token has expired or session is invalid'
+                })
+            }
+        }).catch((err) => {
+            res.status(401).send(err);
+        })
+    }
+
+    catch (e) {
+        console.log('error')
+    }
+        
+    
+}
+
+let authenticate = (req, res, next) => {
+    let token = req.header('x-access-token');
+
+    // Verify JWT
+
+    jwt.verify(token, User.getJWTSecret(), (err, decoded) => {
+        if(err) {
+            // check error
+            //jwt is invalid - * DO NOT AUNTENTICATE *
+            res.status(401).send(err);
+        } else {
+            // jwt is valid
+            req.user_id = decoded._id; //user id is encoded with the secret when token was generated so we decode it here
+            next();
+        }
+    });
+}
 
 router.post('/register', (req, res) => {
     let body = req.body;
@@ -67,6 +141,27 @@ router.post('/login', (req, res) => {
         })
     }).catch((e) => {
         res.status(400).send(e);
+    })
+})
+
+/**
+ * GET /user/me/access-token
+ * Purpose: generates and returns an access token
+ */
+
+router.get('/me/access-token', verifySession, (req, res) => {
+    req.userObject.generateAccessToken().then((accessToken) => {
+        res.header('x-access-token', accessToken).send({ accessToken });
+    }).catch((e) => {
+        res.status(400).send(e);
+    });
+})
+
+router.get('/profile/:userId/me/:jwttoken', authenticate, (req, res) => {
+    _id = req.params.userId;
+    token = req.params.jwttoken;
+    User.findByIdAndToken(_id, token).then((user) => {
+        res.send(user);
     })
 })
 
